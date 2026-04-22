@@ -39,7 +39,7 @@ def create_patches(input_path, output_img_dir, output_mask_dir, patch_size=256):
                 # Simple rule: If pixel brightness is high, it's a cloud (1), else background (0)
                 # Adjust threshold (e.g., 180 for 8-bit, or 0.6 for normalized) based on your image
                 threshold = np.max(img_patch) * 0.6 
-                mask_patch = np.where(mean_brightness > threshold, 1.0, 0.0).astype(np.float32)
+                mask_patch = np.where(mean_brightness > 0.4, 1.0, 0.0).astype(np.float32)
                 
                 # ----------------------------------------------------
 
