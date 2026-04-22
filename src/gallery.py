@@ -5,17 +5,22 @@ import matplotlib.pyplot as plt
 import os
 from model import LightweightUNet
 
-def show_gallery():
+def scale_percentile(img):
+    """16-bit veriyi görselleştirmek için %2-%98 ölçekleme yapar."""
+    low, high = np.percentile(img, (2, 98))
+    return np.clip((img - low) / (high - low), 0, 1)
+
+def show_debug_gallery():
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     model = LightweightUNet(in_channels=4, out_channels=1)
     model.load_state_dict(torch.load("models/nimbus_model_v1.pt", map_location=device))
     model.to(device).eval()
 
-    # Test edilecek 6 farklı yama numarası seçelim
+    # Test edilecek yamalar
     patch_indices = ["0100", "0250", "0400", "0550", "0700", "0800"]
     
-    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
-    axes = axes.flatten()
+    # 6 satır (yamalar), 2 sütun (Orijinal vs Tahmin)
+    fig, axes = plt.subplots(len(patch_indices), 2, figsize=(10, 20))
 
     for i, idx in enumerate(patch_indices):
         img_path = f"data/images/patch_{idx}.tif"
@@ -26,22 +31,23 @@ def show_gallery():
         
         input_tensor = torch.tensor(image).unsqueeze(0).to(device)
         with torch.no_grad():
+            # Model logits döndürdüğü için sigmoid uyguluyoruz
             prediction = torch.sigmoid(model(input_tensor)).squeeze().cpu().numpy()
 
-        # Görselleştirme: RGB oluştur (Scaling ile)
+        # --- SOL SÜTUN: ORIJINAL ---
         rgb = np.transpose(image[:3, :, :], (1, 2, 0))
-        rgb = np.clip(rgb * 10, 0, 1) # Biraz daha parlak yapalım
+        rgb_scaled = scale_percentile(rgb)
+        axes[i, 0].imshow(rgb_scaled)
+        axes[i, 0].set_title(f"Original Patch {idx}")
+        axes[i, 0].axis('off')
 
-        # Tahmini (Maskeyi) orijinalin üzerine şeffaf mavi olarak ekle
-        mask = (prediction > 0.5).astype(np.float32)
-        
-        axes[i].imshow(rgb)
-        axes[i].imshow(mask, cmap='Blues', alpha=0.4) # Bulutları mavi katman olarak göster
-        axes[i].set_title(f"Patch {idx}")
-        axes[i].axis('off')
+        # --- SAĞ SÜTUN: TAHMİN (MASK) ---
+        axes[i, 1].imshow(prediction, cmap='gray', vmin=0, vmax=1)
+        axes[i, 1].set_title(f"Prediction (Mean: {prediction.mean():.2f})")
+        axes[i, 1].axis('off')
 
     plt.tight_layout()
     plt.show()
 
 if __name__ == "__main__":
-    show_gallery()
+    show_debug_gallery()
