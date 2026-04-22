@@ -15,7 +15,7 @@ def predict():
     model.eval()
 
     # 3. Load a Sample Patch (Let's pick patch 0)
-    test_patch_path = "data/images/patch_0000.tif"
+    test_patch_path = "data/images/patch_0400.tif"
     with rasterio.open(test_patch_path) as src:
         image = src.read().astype(np.float32) / 65535.0
         
