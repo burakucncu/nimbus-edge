@@ -19,7 +19,7 @@ def train_model():
     # 2. Hyperparameters
     LEARNING_RATE = 1e-4
     BATCH_SIZE = 8
-    NUM_EPOCHS = 10
+    NUM_EPOCHS = 20
     IMAGE_DIR = "data/images"
     MASK_DIR = "data/masks"
 
