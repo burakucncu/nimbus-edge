@@ -5,3 +5,4 @@ models/
 *.tif
 .DS_Store
 *.jpg
+output/
