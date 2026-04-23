@@ -21,14 +21,21 @@ def process_large_scene(image_path, model_path="models/nimbus_model_v1.pt"):
         print(f"Hata: {image_path} bulunamadı!")
         return
 
+    # --- 4 BANT GÜVENLİK KİLİDİ ---
+    with rasterio.open(image_path) as temp_src:
+        if temp_src.count < 4:
+            print(f"❌ HATA: Model 4 bant (RGB+NIR) bekliyor, ancak '{image_path}' sadece {temp_src.count} banda sahip.")
+            print("Lütfen gerçek çok bantlı (Multispectral) bir uydu görüntüsü kullanın.")
+            return
+
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     
-    # Modelimiz 4 bant bekliyor (RGB + NIR)
+    # Modelimiz saf 4 bant bekliyor (RGB + NIR)
     model = LightweightUNet(in_channels=4, out_channels=1)
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.to(device).eval()
 
-    print(f"[{device.type.upper()}] Model yüklendi. Ağırlıklı Harmanlama ve Otomatik Bant Yönetimi başlıyor...")
+    print(f"[{device.type.upper()}] Model yüklendi. Saf 4-Bant Analizi (Ağırlıklı Harmanlama ile) başlıyor...")
     start_time = time.time()
 
     patch_size = 256
@@ -39,13 +46,18 @@ def process_large_scene(image_path, model_path="models/nimbus_model_v1.pt"):
     out_dir = os.path.join("output", base_name)
     os.makedirs(out_dir, exist_ok=True)
 
-    # Ağırlık matrisini hazırla
     weight_patch = create_hann_window(patch_size)
 
     with rasterio.open(image_path) as src:
         width = src.width
         height = src.height
         profile = src.profile
+
+        # Otomatik Bit Derinliği
+        if src.dtypes[0] == 'uint8':
+            norm_factor = 255.0
+        else:
+            norm_factor = 65535.0
 
         print("Geçerli alan (NoData) tespiti yapılıyor...")
         band1 = src.read(1)
@@ -69,14 +81,9 @@ def process_large_scene(image_path, model_path="models/nimbus_model_v1.pt"):
             for y in y_steps:
                 for x in x_steps:
                     window = Window(x, y, patch_size, patch_size)
-                    patch = src.read(window=window, boundless=True, fill_value=0).astype(np.float32) / 65535.0
                     
-                    # --- 3 BANT DESTEĞİ (Depolama Dostu Çözüm) ---
-                    # Eğer görüntü 3 bantlıysa (RGB), modeli bozmamak için boş (0) bir 4. bant ekle
-                    if patch.shape[0] == 3:
-                        synthetic_nir = np.mean(patch, axis=0, keepdims=True)
-                        patch = np.concatenate((patch, synthetic_nir), axis=0)
-                    # ---------------------------------------------
+                    # Sadece ilk 4 bandı okuyoruz (RGB + NIR)
+                    patch = src.read([1, 2, 3, 4], window=window, boundless=True, fill_value=0).astype(np.float32) / norm_factor
 
                     input_tensor = torch.tensor(patch).unsqueeze(0).to(device)
                     logits = model(input_tensor)
@@ -93,11 +100,9 @@ def process_large_scene(image_path, model_path="models/nimbus_model_v1.pt"):
                     if processed % 500 == 0:
                         print(f"İşlenen yama: {processed}/{total_patches}")
 
-    # 0'a bölünme hatasını engelle ve nihai (pürüzsüz) olasılık haritasını çıkar
     weight_sum[weight_sum == 0] = 1.0
     final_probs = full_probs_sum / weight_sum
 
-    # Eşikleme ve NoData Kırpması
     full_mask = (final_probs > inference_threshold).astype(np.uint8)
     full_mask[~valid_pixels_mask] = 0
 
@@ -113,9 +118,12 @@ def process_large_scene(image_path, model_path="models/nimbus_model_v1.pt"):
     print(f"GERÇEK BULUT ORANI : %{cloud_percentage:.2f}")
     print("="*40)
 
+    # Orijinal profil özelliklerini kopyala ama maske için 1 bant yap
+    out_profile = profile.copy()
+    out_profile.update(count=1, dtype=rasterio.uint8, compress='lzw')
+    
     out_tif_path = os.path.join(out_dir, f"{base_name}_mask.tif")
-    profile.update(count=1, dtype=rasterio.uint8, compress='lzw')
-    with rasterio.open(out_tif_path, 'w', **profile) as dest:
+    with rasterio.open(out_tif_path, 'w', **out_profile) as dest:
         dest.write(full_mask, 1)
         
     out_jpg_path = os.path.join(out_dir, f"{base_name}_mask.jpg")
@@ -125,5 +133,6 @@ def process_large_scene(image_path, model_path="models/nimbus_model_v1.pt"):
     print(f"Çıktılar '{out_dir}/' klasörüne başarıyla kaydedildi!")
 
 if __name__ == "__main__":
-    large_scene = "data/raw/gazze.tif" 
+    # Test için orijinal, saf 4 bantlı uydu görüntümüze geri döndük
+    large_scene = "data/raw/test_1.tif" 
     process_large_scene(large_scene)
