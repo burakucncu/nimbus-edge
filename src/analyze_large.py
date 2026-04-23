@@ -22,11 +22,13 @@ def process_large_scene(image_path, model_path="models/nimbus_model_v1.pt"):
         return
 
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    
+    # Modelimiz 4 bant bekliyor (RGB + NIR)
     model = LightweightUNet(in_channels=4, out_channels=1)
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.to(device).eval()
 
-    print(f"[{device.type.upper()}] Model yüklendi. Ağırlıklı Harmanlama (Weighted Blending) Analizi başlıyor...")
+    print(f"[{device.type.upper()}] Model yüklendi. Ağırlıklı Harmanlama ve Otomatik Bant Yönetimi başlıyor...")
     start_time = time.time()
 
     patch_size = 256
@@ -51,7 +53,6 @@ def process_large_scene(image_path, model_path="models/nimbus_model_v1.pt"):
         total_valid_pixels = np.sum(valid_pixels_mask)
         print(f"Toplam Çerçeve: {width*height:,} piksel | Gerçek Görüntü Alanı: {total_valid_pixels:,} piksel")
 
-        # Artık sadece en yüksek olasılığı değil, toplam olasılığı ve toplam ağırlığı tutuyoruz
         full_probs_sum = np.zeros((height, width), dtype=np.float32)
         weight_sum = np.zeros((height, width), dtype=np.float32)
         
@@ -70,6 +71,13 @@ def process_large_scene(image_path, model_path="models/nimbus_model_v1.pt"):
                     window = Window(x, y, patch_size, patch_size)
                     patch = src.read(window=window, boundless=True, fill_value=0).astype(np.float32) / 65535.0
                     
+                    # --- 3 BANT DESTEĞİ (Depolama Dostu Çözüm) ---
+                    # Eğer görüntü 3 bantlıysa (RGB), modeli bozmamak için boş (0) bir 4. bant ekle
+                    if patch.shape[0] == 3:
+                        synthetic_nir = np.mean(patch, axis=0, keepdims=True)
+                        patch = np.concatenate((patch, synthetic_nir), axis=0)
+                    # ---------------------------------------------
+
                     input_tensor = torch.tensor(patch).unsqueeze(0).to(device)
                     logits = model(input_tensor)
                     probs = torch.sigmoid(logits).squeeze().cpu().numpy()
@@ -77,8 +85,7 @@ def process_large_scene(image_path, model_path="models/nimbus_model_v1.pt"):
                     h_valid = min(patch_size, height - y)
                     w_valid = min(patch_size, width - x)
                     
-                    # --- AĞIRLIKLI BİRLEŞTİRME (MAGIC HAPPENS HERE) ---
-                    # Tahminleri, merkeze olan uzaklığına göre (ağırlıkla) çarparak ekliyoruz
+                    # AĞIRLIKLI BİRLEŞTİRME (Weighted Blending)
                     full_probs_sum[y:y+h_valid, x:x+w_valid] += probs[:h_valid, :w_valid] * weight_patch[:h_valid, :w_valid]
                     weight_sum[y:y+h_valid, x:x+w_valid] += weight_patch[:h_valid, :w_valid]
                     
@@ -118,5 +125,5 @@ def process_large_scene(image_path, model_path="models/nimbus_model_v1.pt"):
     print(f"Çıktılar '{out_dir}/' klasörüne başarıyla kaydedildi!")
 
 if __name__ == "__main__":
-    large_scene = "data/raw/scene_1.tif" 
+    large_scene = "data/raw/gazze.tif" 
     process_large_scene(large_scene)
