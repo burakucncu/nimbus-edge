@@ -27,11 +27,10 @@ def create_patches(input_path, output_img_dir, output_mask_dir, patch_size=256):
                 max_val = np.max(normalized_patch)
                 
                 # Eğer yama çok karanlıksa (neredeyse tamamen siyahsa) işlem yapma
-                if max_val < 0.001: 
+                if max_val < 0.02: 
                     mask_patch = np.zeros((patch_size, patch_size), dtype=np.float32)
                 else:
-                    # Yamanın en parlak değerinin %60'ından fazlası buluttur
-                    threshold = max_val * 0.6
+                    threshold = max_val * 0.45
                     mean_spatial = np.mean(normalized_patch, axis=0)
                     mask_patch = np.where(mean_spatial > threshold, 1.0, 0.0).astype(np.float32)
                 
