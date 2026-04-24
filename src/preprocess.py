@@ -65,7 +65,7 @@ def create_dataset(raw_dir="data/raw", img_dir="data/images", mask_dir="data/mas
                     
                     # 16-bit görüntülerde karanlık bir okyanusun NIR değeri çok düşüktür.
                     # Gerçek bir bulut/kara parçası yoksa, gürültüyü bulut sanmaması için mutlak sınır:
-                    abs_threshold = 100 if src.dtypes[0] == 'uint8' else 10000
+                    abs_threshold = 30 if src.dtypes[0] == 'uint8' else 1500
 
                     if max_val < abs_threshold:
                         # Bu yamada bulut yok (sadece karanlık su veya gölge var)
