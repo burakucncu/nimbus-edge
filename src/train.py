@@ -57,8 +57,9 @@ def train_model():
         print(f"Epoch [{epoch+1}/{NUM_EPOCHS}] - Loss: {epoch_loss/len(train_loader):.4f}")
 
     # 6. Save Model
-    torch.save(model.state_dict(), "models/nimbus_model_v1.pt")
-    print("Training complete. Model saved to models/nimbus_model_v1.pt")
+    model_save_path = "models/nimbus_model_v3.pt"
+    torch.save(model.state_dict(), model_save_path)
+    print(f"Training complete. Model saved to {model_save_path}")
 
 if __name__ == "__main__":
     train_model()

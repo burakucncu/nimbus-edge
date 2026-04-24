@@ -24,7 +24,7 @@ def create_dataset(raw_dir="data/raw", img_dir="data/images", mask_dir="data/mas
         print(f"[{scene_name}] İşleniyor...")
 
         with rasterio.open(filepath) as src:
-            # 4 Bant Güvenlik Kilidi (Daha önce eklediğimiz kurala sadık kalıyoruz)
+            # 4 Bant Güvenlik Kilidi
             if src.count < 4:
                 print(f"  -> ATLANDI: 4 bantlı değil ({src.count} bant). Sadece Multispectral veriler alınır.")
                 continue
@@ -38,27 +38,42 @@ def create_dataset(raw_dir="data/raw", img_dir="data/images", mask_dir="data/mas
             profile_mask = src.profile.copy()
             profile_mask.update(width=patch_size, height=patch_size, count=1, dtype=rasterio.uint8)
 
-            band1 = src.read(1) # NoData kontrolü için
+            print("  -> Geçerli alan (NoData) tespiti yapılıyor...")
+            band1 = src.read(1) 
+            # --- YENİ NODATA KORUMA KALKANI ---
+            # Görüntünün tamamı için geçerli pikselleri (0'dan büyük) baştan buluyoruz
+            valid_patch_mask = (band1 > 0) 
+            # ----------------------------------
+            
             scene_patches = 0
 
             # Görüntüyü 256x256 piksellik yamalara böl
             for y in range(0, height - patch_size + 1, patch_size):
                 for x in range(0, width - patch_size + 1, patch_size):
-                    window = Window(x, y, patch_size, patch_size)
                     
-                    # NoData (Siyah) alan kontrolü: Yamanın %80'inden fazlası siyahsa/boşsa atla!
-                    valid_patch = band1[y:y+patch_size, x:x+patch_size]
-                    if np.sum(valid_patch > 0) < (patch_size * patch_size * 0.8):
+                    # Yamanın %80'inden fazlası siyahsa (NoData) o yamayı çöpe at!
+                    valid_pixels_in_patch = np.sum(valid_patch_mask[y:y+patch_size, x:x+patch_size])
+                    if valid_pixels_in_patch < (patch_size * patch_size * 0.8):
                         continue
 
+                    window = Window(x, y, patch_size, patch_size)
                     patch = src.read([1, 2, 3, 4], window=window)
                     
                     # --- OTOMATİK ETİKETLEME (Pseudo-Labeling) ---
                     nir_band = patch[3]
                     max_val = np.max(nir_band)
-                    if max_val == 0: continue
-                    # Dinamik Eşikleme ile maske üretimi
-                    mask = (nir_band > (max_val * 0.45)).astype(np.uint8)
+                    
+                    # 16-bit görüntülerde karanlık bir okyanusun NIR değeri çok düşüktür.
+                    # Gerçek bir bulut/kara parçası yoksa, gürültüyü bulut sanmaması için mutlak sınır:
+                    abs_threshold = 100 if src.dtypes[0] == 'uint8' else 10000
+
+                    if max_val < abs_threshold:
+                        # Bu yamada bulut yok (sadece karanlık su veya gölge var)
+                        # Siyah maske (0) üret ki model buranın gürültü olmadığını öğrensin.
+                        mask = np.zeros_like(nir_band, dtype=np.uint8)
+                    else:
+                        # Yeterince parlak bir nesne var, dinamik eşiklemeyi uygula
+                        mask = (nir_band > (max_val * 0.45)).astype(np.uint8)
                     # ---------------------------------------------
 
                     # Çakışmayı önlemek için dosya adına sahne adını ekliyoruz
