@@ -16,7 +16,7 @@ def create_hann_window(patch_size):
     window_2d = np.outer(window_1d, window_1d).astype(np.float32)
     return window_2d
 
-def process_large_scene(image_path, model_path="models/nimbus_model_v4.pt"):
+def process_large_scene(image_path, model_path="models/nimbus_model_v4_golden.pt"):
     if not os.path.exists(image_path):
         print(f"Hata: {image_path} bulunamadı!")
         return

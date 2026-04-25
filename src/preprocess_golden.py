@@ -32,7 +32,11 @@ def prepare_golden_dataset():
 
         band1 = src_img.read(1)
         valid_patch_mask = (band1 > 0)
+        
+        # İstatistik tutmak için sayaçlar
         scene_patches = 0
+        cloud_patches = 0
+        empty_patches_kept = 0
 
         # Görüntüyü 256x256 piksellik yamalara böl
         for y in range(0, height - patch_size + 1, patch_size):
@@ -48,6 +52,20 @@ def prepare_golden_dataset():
                 img_patch = src_img.read([1, 2, 3, 4], window=window)
                 mask_patch = src_mask.read(1, window=window) 
 
+                # ---------------------------------------------------------
+                # YENİ EKLENEN KISIM: SINIF DENGESİZLİĞİ (CLASS IMBALANCE) ÇÖZÜMÜ
+                contains_cloud = np.any(mask_patch == 1)
+                
+                # Eğer yama tamamen boşsa (sadece okyanus/karaysa)
+                if not contains_cloud:
+                    # Boş yamaların %95'ini ÇÖPE AT, sadece %5'ini "negatif örnek" olarak tut!
+                    if np.random.rand() > 0.05: 
+                        continue
+                    empty_patches_kept += 1
+                else:
+                    cloud_patches += 1
+                # ---------------------------------------------------------
+
                 # Yamaları kaydet
                 img_path = os.path.join(img_dir, f"golden_patch_{scene_patches:04d}.tif")
                 mask_path = os.path.join(mask_dir, f"golden_patch_{scene_patches:04d}.tif")
@@ -60,7 +78,9 @@ def prepare_golden_dataset():
 
                 scene_patches += 1
                 
-    print(f"🎉 Başarılı! Kendi ellerinle çizdiğin veriden {scene_patches} adet kusursuz yama üretildi.")
+    print(f"🎉 Başarılı! Toplam {scene_patches} adet dengeli (Altın) yama üretildi.")
+    print(f"   -> Bulut içeren yamalar: {cloud_patches}")
+    print(f"   -> Şaşırtmaca (Boş) yamalar: {empty_patches_kept}")
 
 if __name__ == "__main__":
     prepare_golden_dataset()
