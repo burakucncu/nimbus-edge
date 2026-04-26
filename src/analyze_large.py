@@ -5,7 +5,9 @@ import numpy as np
 import os
 import time
 from PIL import Image
-from model import LightweightUNet
+
+# 1. DEĞİŞİKLİK: Eski amatör model yerine endüstri standardı SMP kütüphanesini çağırıyoruz
+import segmentation_models_pytorch as smp
 
 def create_hann_window(patch_size):
     """
@@ -16,7 +18,8 @@ def create_hann_window(patch_size):
     window_2d = np.outer(window_1d, window_1d).astype(np.float32)
     return window_2d
 
-def process_large_scene(image_path, model_path="models/nimbus_model_v4_golden.pt"):
+# 2. DEĞİŞİKLİK: Varsayılan model yolunu senin az önce eğittiğin "Uzman" modele çevirdik
+def process_large_scene(image_path, model_path="models/nimbus_resnet34_finetuned.pt"):
     if not os.path.exists(image_path):
         print(f"Hata: {image_path} bulunamadı!")
         return
@@ -30,17 +33,32 @@ def process_large_scene(image_path, model_path="models/nimbus_model_v4_golden.pt
 
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     
-    # Modelimiz saf 4 bant bekliyor (RGB + NIR)
-    model = LightweightUNet(in_channels=4, out_channels=1)
+    # 3. DEĞİŞİKLİK: Devasa ResNet34 mimarisinin "Boş İskeletini" kuruyoruz
+    print("🧠 Kennedy Uzmanı Model (ResNet34) İskeleti Kuruluyor...")
+    model = smp.Unet(
+        encoder_name="resnet34",
+        encoder_weights=None, # İnternetten DEĞİL, senin eğittiğin dosyadan okuyacağız!
+        in_channels=4,
+        classes=1
+    )
+
+    # 4. DEĞİŞİKLİK: Senin eğittiğin İnce Ayarlı (Fine-Tuned) zekayı iskelete enjekte ediyoruz
+    if not os.path.exists(model_path):
+        print(f"❌ HATA: Eğitilmiş model bulunamadı: {model_path}")
+        return
+        
     model.load_state_dict(torch.load(model_path, map_location=device))
-    model.to(device).eval()
+    model.to(device).eval() # Modeli "Tahmin" (Inference) moduna kilitliyoruz
 
     print(f"[{device.type.upper()}] Model yüklendi. Saf 4-Bant Analizi (Ağırlıklı Harmanlama ile) başlıyor...")
     start_time = time.time()
 
     patch_size = 256
     stride = 128  # %50 Örtüşme
-    inference_threshold = 0.25 
+    
+    # İPUCU: Yeni modelimiz çok daha kendinden emin olduğu için threshold (eşik) değerini 
+    # 0.25'ten endüstri standardı olan 0.50'ye çektim. Sadece %50'den fazla eminse "Bulut" diyecek.
+    inference_threshold = 0.50 
 
     base_name = os.path.splitext(os.path.basename(image_path))[0]
     out_dir = os.path.join("output", base_name)
@@ -57,7 +75,7 @@ def process_large_scene(image_path, model_path="models/nimbus_model_v4_golden.pt
         if src.dtypes[0] == 'uint8':
             norm_factor = 255.0
         else:
-            norm_factor = 65535.0
+            norm_factor = 10000.0
 
         print("Geçerli alan (NoData) tespiti yapılıyor...")
         band1 = src.read(1)
@@ -84,6 +102,8 @@ def process_large_scene(image_path, model_path="models/nimbus_model_v4_golden.pt
                     
                     # Sadece ilk 4 bandı okuyoruz (RGB + NIR)
                     patch = src.read([1, 2, 3, 4], window=window, boundless=True, fill_value=0).astype(np.float32) / norm_factor
+
+                    patch = np.clip(patch, 0, 1)
 
                     input_tensor = torch.tensor(patch).unsqueeze(0).to(device)
                     logits = model(input_tensor)
@@ -133,6 +153,6 @@ def process_large_scene(image_path, model_path="models/nimbus_model_v4_golden.pt
     print(f"Çıktılar '{out_dir}/' klasörüne başarıyla kaydedildi!")
 
 if __name__ == "__main__":
-    # Test için orijinal, saf 4 bantlı uydu görüntümüze geri döndük
-    large_scene = "data/raw/test_1.tif" 
+    # Test için o "0 Bulut" diyerek hüsrana uğradığımız asıl görüntüyü test ediyoruz!
+    large_scene = "data/raw/kennedy_1.tif" 
     process_large_scene(large_scene)
