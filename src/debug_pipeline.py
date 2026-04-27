@@ -15,7 +15,7 @@ def run_diagnostics():
         return
 
     # 1. Karanlık Oda Testi (Maksimum Piksel Değeri)
-    sample_img = os.path.join(img_dir, [f for f in os.listdir(img_dir) if f.endswith('.tif')][0])
+    sample_img = "data/raw/gazze.tif"
     with rasterio.open(sample_img) as src:
         img_data = src.read()
         max_val = img_data.max()
