@@ -5,8 +5,8 @@ import numpy as np
 
 def prepare_golden_dataset():
     # Dosya yolları
-    raw_image_path = "data/raw/kennedy_2.tif"
-    golden_mask_path = "data/raw/kennedy_2_golden_mask.tif"
+    raw_image_path = "data/raw/gazze.tif"
+    golden_mask_path = "data/raw/gazze_golden_mask.tif"
     img_dir = "data/images"
     mask_dir = "data/masks"
     patch_size = 256
@@ -67,8 +67,8 @@ def prepare_golden_dataset():
                 # ---------------------------------------------------------
 
                 # Yamaları kaydet
-                img_path = os.path.join(img_dir, f"golden_patch_{scene_patches:04d}.tif")
-                mask_path = os.path.join(mask_dir, f"golden_patch_{scene_patches:04d}.tif")
+                img_path = os.path.join(img_dir, f"gazze_golden_patch_{scene_patches:04d}.tif")
+                mask_path = os.path.join(mask_dir, f"gazze_golden_patch_{scene_patches:04d}.tif")
 
                 with rasterio.open(img_path, 'w', **profile_img) as dest:
                     dest.write(img_patch)
